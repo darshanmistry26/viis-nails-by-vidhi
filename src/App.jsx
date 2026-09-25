@@ -1,15 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+import AdminOrders from "./Admin/AdminOrders";
+
 import "./App.css";
 
 const whatsappNumber = "918799441184";
+
 const instagramUrl = "https://www.instagram.com/viis.nails_/";
 
 const CART_STORAGE_KEY = "viis_nails_cart";
+
 const COUPON_STORAGE_KEY = "viis_nails_coupon";
+
 const COUPON_CODE = "VIIS10";
+
 const COUPON_DISCOUNT = 10;
+
 const COUPON_MINIMUM = 400;
+
 const COUPON_MAX_USES = 20;
+
 const COUPON_USAGE_KEY = "viis10_usage_count";
 
 const products = [
@@ -361,7 +370,9 @@ function App() {
   });
 
   const [showCart, setShowCart] = useState(false);
+
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+
   const [showCartToast, setShowCartToast] =
     useState(false);
 
@@ -371,6 +382,7 @@ function App() {
   const toastTimerRef = useRef(null);
 
   const [couponCode, setCouponCode] = useState("");
+
   const [appliedCoupon, setAppliedCoupon] =
     useState("");
 
@@ -397,6 +409,11 @@ function App() {
 
   const [formError, setFormError] = useState("");
 
+  const isAdminPage = window.location.pathname === "/admin";
+  if (isAdminPage) {
+  return <AdminOrders />;
+}
+
   useEffect(() => {
     localStorage.setItem(
       CART_STORAGE_KEY,
@@ -414,6 +431,7 @@ function App() {
         const parsed = JSON.parse(savedCoupon);
 
         setCouponCode(parsed.couponCode || "");
+
         setAppliedCoupon(
           parsed.appliedCoupon || ""
         );
@@ -749,20 +767,73 @@ function App() {
     }
   };
 
-  // WhatsApp order: same tab, no new _blank/about:blank tab
-  const sendOrderToWhatsApp = () => {
+  // Save order to MongoDB first, then open WhatsApp.
+  const sendOrderToWhatsApp = async () => {
     if (!cart.length) return;
 
-    const itemLines = cart
-      .map(
-        (item) =>
-          `• ${item.name} x${item.quantity} — ₹${
-            item.price * item.quantity
-          }`
-      )
-      .join("\n");
+    setFormError("");
 
-    const message = `Hello Viis Nails By Vidhi ♡
+    try {
+      const orderData = {
+        customer: {
+          name: customerDetails.name.trim(),
+          whatsapp: customerDetails.whatsapp.trim(),
+          address: customerDetails.address.trim(),
+          city: customerDetails.city.trim(),
+          pincode: customerDetails.pincode.trim(),
+          note: customerDetails.note.trim(),
+        },
+
+        items: cart.map((item) => ({
+          productId: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+
+        subtotal: cartTotal,
+
+        coupon: {
+          code: appliedCoupon || "",
+          discount: couponDiscount,
+        },
+
+        total: finalTotal,
+
+        status: "Pending",
+      };
+
+      // Save order in MongoDB
+      const response = await fetch(
+        "http://localhost:5000/api/orders",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(orderData),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message ||
+            "Failed to save order."
+        );
+      }
+
+      const itemLines = cart
+        .map(
+          (item) =>
+            `• ${item.name} x${item.quantity} — ₹${
+              item.price * item.quantity
+            }`
+        )
+        .join("\n");
+
+      const message = `Hello Viis Nails By Vidhi ♡
 
 I would like to place an order.
 
@@ -787,20 +858,32 @@ ${itemLines}
 Subtotal: ₹${cartTotal}
 
 Coupon: ${
-      appliedCoupon
-        ? `${appliedCoupon} (-₹${couponDiscount})`
-        : "None"
-    }
+        appliedCoupon
+          ? `${appliedCoupon} (-₹${couponDiscount})`
+          : "None"
+      }
 
 Final Total: ₹${finalTotal}
 
+Order ID: ${data.order._id}
+
 Please confirm my order. Thank you ♡`;
 
-    const url =
-      `https://wa.me/${whatsappNumber}?text=` +
-      encodeURIComponent(message);
+      const url =
+        `https://wa.me/${whatsappNumber}?text=` +
+        encodeURIComponent(message);
 
-    window.location.href = url;
+      window.location.href = url;
+    } catch (error) {
+      console.error(
+        "Order submission error:",
+        error
+      );
+
+      setFormError(
+        "Order could not be saved. Please try again."
+      );
+    }
   };
 
   const closeOrderFlow = () => {
@@ -816,8 +899,13 @@ Please confirm my order. Thank you ♡`;
     );
   };
 
+  if (isAdminPage) {
+    return <AdminOrders />;
+  }
+
   return (
     <div className="app">
+
       {/* NAVBAR */}
       <nav className="navbar">
         <div
